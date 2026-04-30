@@ -132,7 +132,7 @@ function LiveLogin({ onSuccess, onForgot, onTeacher, toast }) {
         </form>
 
         <div style={{ textAlign: 'center', marginTop: 20, fontSize: 11, color: 'var(--ink-500)' }}>
-          首次登入請使用預設密碼:<code>0000</code> + 您的生日 MMDD
+          首次登入請使用預設密碼:<code>00000000</code>
         </div>
       </div>
     </div>

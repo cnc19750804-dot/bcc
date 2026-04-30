@@ -51,18 +51,25 @@
   document.documentElement.style.setProperty('--brand-700', 'oklch(0.34 0.12 255)');
   document.documentElement.style.setProperty('--brand-800', 'oklch(0.27 0.09 255)');
 
+  // ✅ API URL 寫死在這裡,所有電腦/瀏覽器一打開就能用
+  const HARDCODED_API_URL = 'https://script.google.com/macros/s/AKfycbwdPofhe9bQsezYcZf0NoBAjesVewUvupVBDsITRKBG45My9VBMsWejLDDFZAVGD5MCgA/exec';
+  window.BCC_API.setApiUrl(HARDCODED_API_URL);
+
   function Root() {
-    const [showTool, setShowTool] = React.useState(!window.BCC_API.getApiUrl());
+    // 只有按下隱藏快捷鍵 (Ctrl+Shift+T) 才顯示老師連線工具
+    const [showTool, setShowTool] = React.useState(false);
+    React.useEffect(() => {
+      function onKey(e) {
+        if (e.ctrlKey && e.shiftKey && (e.key === 'T' || e.key === 't')) {
+          setShowTool((v) => !v);
+        }
+      }
+      window.addEventListener('keydown', onKey);
+      return () => window.removeEventListener('keydown', onKey);
+    }, []);
     return <>
       <window.LiveApp />
       {showTool && <window.ConnectionTool />}
-      {!showTool && (
-        <button onClick={() => setShowTool(true)} title="連線設定" style={{
-          position: 'fixed', right: 12, bottom: 12, zIndex: 998,
-          background: 'rgba(0,0,0,.4)', color: 'white', border: 'none',
-          width: 36, height: 36, borderRadius: 18, cursor: 'pointer', fontSize: 14,
-        }}>⚙</button>
-      )}
     </>;
   }
 
