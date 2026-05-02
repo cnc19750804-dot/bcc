@@ -6,9 +6,9 @@ const api = (action, params) => window.BCC_API.api(action, params);
 function LiveApp() {
   // view: 'login' | 'forgot' | 'reset' | 'setup' | 'student' | 'teacher'
   const [view, setView] = React.useState(() => {
-    // 開啟時若帶 ?action=resetPage&token=... 直接進重設密碼頁
-    const url = new URL(window.location.href);
-    if (url.searchParams.get('action') === 'resetPage') return 'reset';
+    // 開啟時若帶 #reset=... 直接進重設密碼頁
+    const hash = window.location.hash || '';
+    if (hash.startsWith('#reset=')) return 'reset';
     if (window.BCC_API.getSession()) return 'student';
     return 'login';
   });
@@ -199,8 +199,8 @@ function LiveForgot({ onBack, toast }) {
 
 // ─── 用 Token 重設密碼(從 Email 連結進來)────────────────
 function LiveReset({ onDone, toast }) {
-  const url = new URL(window.location.href);
-  const token = url.searchParams.get('token') || '';
+  const hash = window.location.hash || '';
+  const token = hash.startsWith('#reset=') ? hash.slice(7) : '';
   const [pw, setPw] = React.useState('');
   const [pw2, setPw2] = React.useState('');
   const [busy, setBusy] = React.useState(false);
