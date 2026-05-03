@@ -298,50 +298,216 @@ function RadioCard({ checked, onChange, disabled, title, desc }) {
 // ─── 繳交狀況 Tab ───────────────────────────────────────
 function SubmissionsTab({ toast }) {
   const [students, setStudents] = React.useState([]);
+  const [assignments, setAssignments] = React.useState([]);
+  const [submissions, setSubmissions] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
+  const [view, setView] = React.useState('matrix'); // matrix | folders
+  const [hover, setHover] = React.useState(null); // {sid, aid}
 
   React.useEffect(() => {
     (async () => {
-      const r = await teacherApi('listStudents', { ...window.BCC_API.teacherAuth() });
-      if (r.ok) setStudents(r.students);
+      const [r1, r2] = await Promise.all([
+        teacherApi('listStudents', { ...window.BCC_API.teacherAuth() }),
+        teacherApi('listAllAssignments', { ...window.BCC_API.teacherAuth() }),
+      ]);
+      if (r1.ok) setStudents(r1.students);
+      if (r2.ok) {
+        // 只看已發布的作業,週次小→大
+        const pub = (r2.assignments || []).filter((a) => a.published);
+        pub.sort((a, b) => (a.week - b.week) || new Date(a.dueAt) - new Date(b.dueAt));
+        setAssignments(pub);
+        setSubmissions(r2.submissions || []);
+      }
       setLoading(false);
     })();
   }, []);
 
   if (loading) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--ink-500)' }}>載入中…</div>;
 
+  // 建立 {studentId+assignmentId -> 最新一筆 submission}
+  const subMap = {};
+  submissions.forEach((s) => {
+    const k = s.studentId + '|' + s.assignmentId;
+    const prev = subMap[k];
+    if (!prev || new Date(s.submittedAt) > new Date(prev.submittedAt)) subMap[k] = s;
+  });
+
+  // 每個作業的繳交統計
+  const stats = assignments.map((a) => {
+    let on = 0, late = 0;
+    students.forEach((s) => {
+      const r = subMap[s.studentId + '|' + a.assignmentId];
+      if (!r) return;
+      if (r.state === 'late') late++;
+      else on++;
+    });
+    return { a, on, late, miss: students.length - on - late };
+  });
+
   return (
     <div>
-      <h2 style={{ fontSize: 18, fontWeight: 600, margin: '0 0 16px' }}>學生作業檔案</h2>
-      <p style={{ fontSize: 13, color: 'var(--ink-500)', marginBottom: 16 }}>
-        所有學生的作業都存放在 Google Drive「資訊科技課程作業系統」資料夾下,以「學號_姓名」分類。
-        點下方「開啟資料夾」可直接到 Drive 檢視該生繳交檔案。
-      </p>
-      <div className="card" style={{ overflow: 'hidden', padding: 0 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead><tr style={{ background: 'var(--bg-soft)' }}>
-            <Th>學號</Th><Th>姓名</Th><Th>狀態</Th><Th>最近登入</Th><Th>檔案</Th>
-          </tr></thead>
-          <tbody>
-            {students.map((s) => (
-              <tr key={s.studentId} style={{ borderTop: 'var(--border-soft)' }}>
-                <Td mono>{s.studentId}</Td>
-                <Td>{s.name}</Td>
-                <Td><StatusBadge status={s.status} /></Td>
-                <Td>{s.lastLogin ? fmtDate(s.lastLogin) : '—'}</Td>
-                <Td>
-                  <a href={`https://drive.google.com/drive/search?q=${encodeURIComponent(s.studentId + '_' + s.name)}`}
-                    target="_blank" rel="noopener" className="btn btn-ghost btn-sm" style={{ fontSize: 11, textDecoration: 'none' }}>
-                    📁 開啟資料夾
-                  </a>
-                </Td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, gap: 12, flexWrap: 'wrap' }}>
+        <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>繳交狀況</h2>
+        <div style={{ display: 'flex', gap: 4, background: 'var(--bg-soft)', padding: 3, borderRadius: 8 }}>
+          {[
+            { id: 'matrix', label: '總表' },
+            { id: 'folders', label: '個別資料夾' },
+          ].map((v) => (
+            <button key={v.id} onClick={() => setView(v.id)} style={{
+              background: view === v.id ? 'white' : 'transparent', border: 'none',
+              padding: '6px 14px', fontSize: 12, fontWeight: 500,
+              color: view === v.id ? 'var(--ink-900)' : 'var(--ink-500)',
+              borderRadius: 6, cursor: 'pointer',
+              boxShadow: view === v.id ? '0 1px 2px rgba(0,0,0,.06)' : 'none',
+            }}>{v.label}</button>
+          ))}
+        </div>
       </div>
+
+      {view === 'matrix' && (
+        assignments.length === 0 ? (
+          <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink-500)' }}>
+            目前還沒有已發布的作業
+          </div>
+        ) : (
+          <div className="card" style={{ padding: 0, overflow: 'auto' }}>
+            <table style={{ borderCollapse: 'separate', borderSpacing: 0, fontSize: 12, minWidth: '100%' }}>
+              <thead>
+                <tr style={{ background: 'var(--bg-soft)' }}>
+                  <th style={stickyCellHead(0, 60)}>學號</th>
+                  <th style={stickyCellHead(60, 90)}>姓名</th>
+                  {stats.map(({ a, on, late, miss }) => (
+                    <th key={a.assignmentId} style={{ ...thStyle, minWidth: 90, padding: '8px 6px', textAlign: 'center', borderLeft: 'var(--border-soft)' }}>
+                      <div style={{ fontSize: 10, color: 'var(--ink-500)', fontWeight: 500 }}>W{a.week}</div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink-900)', marginTop: 1, lineHeight: 1.2,
+                        whiteSpace: 'nowrap', maxWidth: 110, overflow: 'hidden', textOverflow: 'ellipsis' }} title={a.title}>
+                        {a.title}
+                      </div>
+                      <div style={{ fontSize: 10, color: 'var(--ink-500)', marginTop: 3, fontFamily: 'var(--font-mono)' }}>
+                        <span style={{ color: '#059669' }}>{on}</span>
+                        {' / '}
+                        <span style={{ color: '#d97706' }}>{late}</span>
+                        {' / '}
+                        <span style={{ color: '#dc2626' }}>{miss}</span>
+                      </div>
+                    </th>
+                  ))}
+                  <th style={{ ...thStyle, minWidth: 70, padding: '8px 10px', textAlign: 'center' }}>完成率</th>
+                </tr>
+              </thead>
+              <tbody>
+                {students.map((s, idx) => {
+                  let done = 0;
+                  assignments.forEach((a) => { if (subMap[s.studentId + '|' + a.assignmentId]) done++; });
+                  const rate = assignments.length ? Math.round(done / assignments.length * 100) : 0;
+                  const rowBg = idx % 2 ? 'var(--bg-page)' : 'white';
+                  return (
+                    <tr key={s.studentId} style={{ borderTop: 'var(--border-soft)' }}>
+                      <td style={{ ...stickyCell(0, 60, rowBg), fontFamily: 'var(--font-mono)', fontSize: 11 }}>{s.studentId}</td>
+                      <td style={stickyCell(60, 90, rowBg)}>{s.name}</td>
+                      {assignments.map((a) => {
+                        const r = subMap[s.studentId + '|' + a.assignmentId];
+                        const cellKey = s.studentId + '|' + a.assignmentId;
+                        return (
+                          <td key={a.assignmentId} title={r ? `${r.state === 'late' ? '逾期' : '準時'}\n${fmtDate(r.submittedAt)}\n${parseFiles(r).length} 個檔案` : '未繳'}
+                            onMouseEnter={() => setHover(cellKey)}
+                            onMouseLeave={() => setHover(null)}
+                            style={{ borderLeft: 'var(--border-soft)', textAlign: 'center', padding: '6px 4px', background: hover === cellKey ? 'var(--bg-soft)' : rowBg }}>
+                            <SubmissionDot sub={r} />
+                          </td>
+                        );
+                      })}
+                      <td style={{ borderLeft: 'var(--border-soft)', padding: '6px 10px', textAlign: 'center', background: rowBg }}>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600,
+                          color: rate >= 80 ? '#059669' : (rate >= 50 ? '#d97706' : '#dc2626') }}>
+                          {rate}%
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div style={{ padding: '10px 14px', fontSize: 11, color: 'var(--ink-500)', borderTop: 'var(--border-soft)', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+              <span>欄頂三色:準時 / 逾期 / 未繳 (位數)</span>
+              <Legend color="#059669" label="準時繳交" />
+              <Legend color="#d97706" label="逾期繳交" />
+              <Legend color="#e5e0d8" label="未繳" hollow />
+              <span style={{ marginLeft: 'auto' }}>滑鼠移到格子可看時間與檔案數</span>
+            </div>
+          </div>
+        )
+      )}
+
+      {view === 'folders' && (
+        <div>
+          <p style={{ fontSize: 13, color: 'var(--ink-500)', marginBottom: 12 }}>
+            所有學生的作業都存放在 Google Drive「資訊科技課程作業系統」資料夾下,以「學號_姓名」分類。
+          </p>
+          <div className="card" style={{ overflow: 'hidden', padding: 0 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead><tr style={{ background: 'var(--bg-soft)' }}>
+                <Th>學號</Th><Th>姓名</Th><Th>狀態</Th><Th>最近登入</Th><Th>檔案</Th>
+              </tr></thead>
+              <tbody>
+                {students.map((s) => (
+                  <tr key={s.studentId} style={{ borderTop: 'var(--border-soft)' }}>
+                    <Td mono>{s.studentId}</Td>
+                    <Td>{s.name}</Td>
+                    <Td><StatusBadge status={s.status} /></Td>
+                    <Td>{s.lastLogin ? fmtDate(s.lastLogin) : '—'}</Td>
+                    <Td>
+                      <a href={`https://drive.google.com/drive/search?q=${encodeURIComponent(s.studentId + '_' + s.name)}`}
+                        target="_blank" rel="noopener" className="btn btn-ghost btn-sm" style={{ fontSize: 11, textDecoration: 'none' }}>
+                        📁 開啟資料夾
+                      </a>
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+// 圓點:準時=綠實、逾期=橘實、未繳=空
+function SubmissionDot({ sub }) {
+  if (!sub) return <span style={{ display: 'inline-block', width: 14, height: 14, borderRadius: 7, border: '1.5px solid #e5e0d8', verticalAlign: 'middle' }} />;
+  const ok = sub.state !== 'late';
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      width: 18, height: 18, borderRadius: 9,
+      background: ok ? '#059669' : '#d97706',
+      color: 'white', fontSize: 10, fontWeight: 700,
+    }}>{ok ? '✓' : '!'}</span>
+  );
+}
+
+function Legend({ color, label, hollow }) {
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+      <span style={{ width: 10, height: 10, borderRadius: 5,
+        background: hollow ? 'transparent' : color,
+        border: hollow ? `1.5px solid ${color}` : 'none' }} />
+      {label}
+    </span>
+  );
+}
+
+function parseFiles(sub) {
+  try { return JSON.parse(sub.fileNames || '[]'); } catch { return []; }
+}
+
+const thStyle = { padding: '10px 12px', textAlign: 'left', fontSize: 12, fontWeight: 500, color: 'var(--ink-700)' };
+function stickyCellHead(left, width) {
+  return { ...thStyle, position: 'sticky', left, background: 'var(--bg-soft)', zIndex: 2, minWidth: width, boxShadow: left > 0 ? '1px 0 0 var(--ink-200)' : 'none' };
+}
+function stickyCell(left, width, bg) {
+  return { padding: '8px 12px', position: 'sticky', left, background: bg, zIndex: 1, minWidth: width, boxShadow: left > 0 ? '1px 0 0 var(--ink-200)' : 'none' };
 }
 
 // ─── 教材管理 Tab ────────────────────────────────────────
