@@ -2,6 +2,15 @@
 
 const api = (action, params) => window.BCC_API.api(action, params);
 
+// 老師 API 的身分參數:優先用 session(老師登入後),沒有才退到 TEACHER_KEY(備用)
+window.BCC_API.teacherAuth = function () {
+  const s = window.BCC_API.getSession();
+  if (s) return { session: s };
+  const k = window.BCC_API.getTeacherKey();
+  if (k) return { teacherKey: k };
+  return {};
+};
+
 // ─── 應用主框架(管理視圖切換)──────────────────────────
 function LiveApp() {
   // view: 'login' | 'forgot' | 'reset' | 'setup' | 'student' | 'teacher'
@@ -9,11 +18,26 @@ function LiveApp() {
     // 開啟時若帶 #reset=... 直接進重設密碼頁
     const hash = window.location.hash || '';
     if (hash.startsWith('#reset=')) return 'reset';
-    if (window.BCC_API.getSession()) return 'student';
     return 'login';
   });
   const [profile, setProfile] = React.useState(null);
   const [toast, setToast] = React.useState(null);
+
+  // 開啟時若已有 session,問後端當前用戶是老師還是學生
+  React.useEffect(() => {
+    const hash = window.location.hash || '';
+    if (hash.startsWith('#reset=')) return;
+    if (!window.BCC_API.getSession()) return;
+    (async () => {
+      const r = await api('me', { session: window.BCC_API.getSession() });
+      if (r.ok) {
+        setProfile(r.profile);
+        setView(r.profile.role === 'teacher' ? 'teacher' : 'student');
+      } else {
+        window.BCC_API.setSession(null);
+      }
+    })();
+  }, []);
 
   const showToast = (msg, kind = 'info') => {
     setToast({ msg, kind });
@@ -24,7 +48,7 @@ function LiveApp() {
     window.BCC_API.setSession(result.session);
     setProfile(result.profile);
     if (result.mustChangePassword) setView('setup');
-    else setView('student');
+    else setView(result.role === 'teacher' ? 'teacher' : 'student');
   };
 
   const handleLogout = () => {
@@ -34,12 +58,18 @@ function LiveApp() {
   };
 
   const goTeacher = () => {
+    // 備用入口:用 TEACHER_KEY 直接進後台(忘記老師帳號密碼時的應急)
     if (!window.BCC_API.getTeacherKey()) {
-      const k = prompt('請輸入 TEACHER_KEY 進入老師後台:');
+      const k = prompt('輸入老師金鑰進入備用後台(忘記老師帳號密碼時使用):');
       if (!k) return;
       window.BCC_API.setTeacherKey(k);
     }
     setView('teacher');
+  };
+
+  // 首次設定完成後,依 role 走到對的頁面
+  const handleSetupDone = () => {
+    setView(profile && profile.role === 'teacher' ? 'teacher' : 'student');
   };
 
   return (
@@ -47,9 +77,9 @@ function LiveApp() {
       {view === 'login'   && <LiveLogin    onSuccess={handleLoginSuccess} onForgot={() => setView('forgot')} onTeacher={goTeacher} toast={showToast} />}
       {view === 'forgot'  && <LiveForgot   onBack={() => setView('login')} toast={showToast} />}
       {view === 'reset'   && <LiveReset    onDone={() => setView('login')} toast={showToast} />}
-      {view === 'setup'   && <LiveSetup    onDone={() => setView('student')} toast={showToast} />}
-      {view === 'student' && <LiveStudent  profile={profile} onLogout={handleLogout} onTeacher={goTeacher} toast={showToast} />}
-      {view === 'teacher' && <LiveTeacher  onLogout={() => setView('login')} toast={showToast} />}
+      {view === 'setup'   && <LiveSetup    onDone={handleSetupDone} toast={showToast} />}
+      {view === 'student' && <LiveStudent  profile={profile} onLogout={handleLogout} toast={showToast} />}
+      {view === 'teacher' && <LiveTeacher  onLogout={handleLogout} toast={showToast} />}
 
       {toast && (
         <div style={{
@@ -124,9 +154,9 @@ function LiveLogin({ onSuccess, onForgot, onTeacher, toast }) {
               style={{ background: 'transparent', border: 'none', color: 'var(--brand-600)', cursor: 'pointer', padding: 0 }}>
               忘記密碼?
             </button>
-            <button type="button" onClick={onTeacher}
-              style={{ background: 'transparent', border: 'none', color: 'var(--ink-500)', cursor: 'pointer', padding: 0 }}>
-              老師後台 →
+            <button type="button" onClick={onTeacher} title="忘記老師帳號密碼時,可用老師金鑰進入備用後台"
+              style={{ background: 'transparent', border: 'none', color: 'var(--ink-500)', cursor: 'pointer', padding: 0, fontSize: 11 }}>
+              老師金鑰備用入口 ·
             </button>
           </div>
         </form>

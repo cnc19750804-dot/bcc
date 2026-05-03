@@ -8,7 +8,7 @@ function AssignmentsAdminTab({ toast }) {
 
   async function refresh() {
     setLoading(true);
-    const r = await window.BCC_API.api('listAllAssignments', { teacherKey: window.BCC_API.getTeacherKey() });
+    const r = await window.BCC_API.api('listAllAssignments', { ...window.BCC_API.teacherAuth() });
     if (r.ok) { setList(r.assignments || []); setSubs(r.submissions || []); }
     else toast('載入失敗:' + r.error, 'error');
     setLoading(false);
@@ -17,7 +17,7 @@ function AssignmentsAdminTab({ toast }) {
 
   async function toggle(a) {
     const r = await window.BCC_API.api('updateAssignment', {
-      teacherKey: window.BCC_API.getTeacherKey(), assignmentId: a.assignmentId,
+      ...window.BCC_API.teacherAuth(), assignmentId: a.assignmentId,
       patch: { published: !a.published },
     });
     if (r.ok) refresh(); else toast('失敗:' + r.error, 'error');
@@ -26,7 +26,7 @@ function AssignmentsAdminTab({ toast }) {
   async function del(a) {
     if (!confirm(`確定刪除作業「${a.title}」?(已繳交的紀錄不會被刪)`)) return;
     const r = await window.BCC_API.api('deleteAssignment', {
-      teacherKey: window.BCC_API.getTeacherKey(), assignmentId: a.assignmentId,
+      ...window.BCC_API.teacherAuth(), assignmentId: a.assignmentId,
     });
     if (r.ok) { toast('已刪除', 'ok'); refresh(); } else toast('失敗:' + r.error, 'error');
   }
@@ -116,7 +116,7 @@ function AssignmentEditor({ assignment, onClose, onDone, toast }) {
     if (!title || !week || !dueAt) return toast('週次/標題/截止時間必填', 'error');
     setBusy(true);
     const params = {
-      teacherKey: window.BCC_API.getTeacherKey(),
+      ...window.BCC_API.teacherAuth(),
       week: +week, title, description: desc,
       dueAt: new Date(dueAt).toISOString(),
       maxFiles: +maxFiles, maxSizeMB: +maxSizeMB, published,
@@ -124,7 +124,7 @@ function AssignmentEditor({ assignment, onClose, onDone, toast }) {
     let r;
     if (assignment) {
       r = await window.BCC_API.api('updateAssignment', {
-        teacherKey: params.teacherKey, assignmentId: assignment.assignmentId,
+        ...window.BCC_API.teacherAuth(), assignmentId: assignment.assignmentId,
         patch: { week: +week, title, description: desc, dueAt: params.dueAt,
           maxFiles: +maxFiles, maxSizeMB: +maxSizeMB, published },
       });

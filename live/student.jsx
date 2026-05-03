@@ -2,7 +2,7 @@
 
 const studentApi = (action, params) => window.BCC_API.api(action, params);
 
-function LiveStudent({ profile, onLogout, onTeacher, toast }) {
+function LiveStudent({ profile, onLogout, toast }) {
   const [tab, setTab] = React.useState('assignments'); // assignments | materials | settings
   const [data, setData] = React.useState({ assignments: [], submissions: [] });
   const [materials, setMaterials] = React.useState([]);
@@ -45,7 +45,6 @@ function LiveStudent({ profile, onLogout, onTeacher, toast }) {
         <div style={{ fontSize: 12, color: 'var(--ink-500)' }}>
           <span className="mono">{me?.studentId}</span> · {me?.name || '同學'}
         </div>
-        <button onClick={onTeacher} className="btn btn-ghost btn-sm" style={{ fontSize: 11 }}>老師後台</button>
         <button onClick={onLogout} className="btn btn-ghost btn-sm" style={{ fontSize: 11 }}>登出</button>
       </div>
 

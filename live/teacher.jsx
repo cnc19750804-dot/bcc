@@ -4,7 +4,13 @@ const teacherApi = (action, params) => window.BCC_API.api(action, params);
 
 function LiveTeacher({ onLogout, toast }) {
   const [tab, setTab] = React.useState('students'); // students | submissions | materials
-  const tk = window.BCC_API.getTeacherKey();
+  const [me, setMe] = React.useState(null);
+
+  React.useEffect(() => {
+    const session = window.BCC_API.getSession();
+    if (!session) return;
+    teacherApi('me', { session }).then((r) => { if (r.ok) setMe(r.profile); });
+  }, []);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -13,11 +19,11 @@ function LiveTeacher({ onLogout, toast }) {
         display: 'flex', alignItems: 'center', gap: 16,
       }}>
         <div style={{ fontSize: 14, fontWeight: 600 }}>🎓 老師後台</div>
-        <div style={{ fontSize: 11, color: 'rgba(255,255,255,.5)', fontFamily: 'var(--font-mono)' }}>
-          KEY: {tk ? tk.substring(0, 6) + '••••••' : '(未設定)'}
+        <div style={{ fontSize: 11, color: 'rgba(255,255,255,.6)' }}>
+          {me ? `${me.name} · ${me.studentId}` : (window.BCC_API.getTeacherKey() ? '金鑰備用模式' : '(未登入)')}
         </div>
         <div style={{ flex: 1 }} />
-        <button onClick={onLogout} className="btn btn-sm" style={{ background: 'rgba(255,255,255,.1)', color: 'white' }}>退出後台</button>
+        <button onClick={onLogout} className="btn btn-sm" style={{ background: 'rgba(255,255,255,.1)', color: 'white' }}>登出</button>
       </div>
 
       <div style={{ background: 'white', borderBottom: 'var(--border-soft)', padding: '0 24px', display: 'flex', gap: 2 }}>
@@ -59,7 +65,7 @@ function StudentsTab({ toast }) {
 
   async function refresh() {
     setLoading(true);
-    const r = await teacherApi('listStudents', { teacherKey: window.BCC_API.getTeacherKey() });
+    const r = await teacherApi('listStudents', { ...window.BCC_API.teacherAuth() });
     if (r.ok) setStudents(r.students);
     else toast('載入失敗:' + r.error, 'error');
     setLoading(false);
@@ -133,7 +139,7 @@ function AddStudentDialog({ onClose, onDone, toast }) {
   async function addOne() {
     if (!sid || !name) return toast('學號與姓名必填', 'error');
     setBusy(true);
-    const r = await teacherApi('createStudent', { teacherKey: window.BCC_API.getTeacherKey(), studentId: sid, name, birthMMDD: bday || '0000' });
+    const r = await teacherApi('createStudent', { ...window.BCC_API.teacherAuth(), studentId: sid, name, birthMMDD: bday || '0000' });
     setBusy(false);
     if (r.ok) { toast(`已建立 · 預設密碼:${r.defaultPassword}`, 'ok'); onDone(); }
     else toast('失敗:' + r.error, 'error');
@@ -147,7 +153,7 @@ function AddStudentDialog({ onClose, onDone, toast }) {
     for (const line of lines) {
       const [bsid, bname, bbday] = line.split(/[,\t]/).map((s) => (s || '').trim());
       if (!bsid || !bname) { out.push({ line, ok: false, msg: '格式錯誤' }); continue; }
-      const r = await teacherApi('createStudent', { teacherKey: window.BCC_API.getTeacherKey(), studentId: bsid, name: bname, birthMMDD: bbday || '0000' });
+      const r = await teacherApi('createStudent', { ...window.BCC_API.teacherAuth(), studentId: bsid, name: bname, birthMMDD: bbday || '0000' });
       out.push({ line, ...r });
       setResults([...out]);
     }
@@ -220,7 +226,7 @@ function ResetPasswordDialog({ student, onClose, toast }) {
   async function submit() {
     setBusy(true);
     const r = await teacherApi('teacherReset', {
-      teacherKey: window.BCC_API.getTeacherKey(),
+      ...window.BCC_API.teacherAuth(),
       studentId: student.studentId, mode,
       tempPassword: tempPw || undefined,
     });
@@ -296,7 +302,7 @@ function SubmissionsTab({ toast }) {
 
   React.useEffect(() => {
     (async () => {
-      const r = await teacherApi('listStudents', { teacherKey: window.BCC_API.getTeacherKey() });
+      const r = await teacherApi('listStudents', { ...window.BCC_API.teacherAuth() });
       if (r.ok) setStudents(r.students);
       setLoading(false);
     })();
@@ -346,7 +352,7 @@ function TeacherMaterialsTab({ toast }) {
 
   async function refresh() {
     setLoading(true);
-    const r = await teacherApi('listAllMaterials', { teacherKey: window.BCC_API.getTeacherKey() });
+    const r = await teacherApi('listAllMaterials', { ...window.BCC_API.teacherAuth() });
     if (r.ok) setList(r.materials);
     setLoading(false);
   }
@@ -354,7 +360,7 @@ function TeacherMaterialsTab({ toast }) {
 
   async function toggle(m) {
     const r = await teacherApi('toggleMaterial', {
-      teacherKey: window.BCC_API.getTeacherKey(), materialId: m.materialId, published: !m.published,
+      ...window.BCC_API.teacherAuth(), materialId: m.materialId, published: !m.published,
     });
     if (r.ok) refresh();
     else toast('失敗:' + r.error, 'error');
@@ -363,7 +369,7 @@ function TeacherMaterialsTab({ toast }) {
   async function del(m) {
     if (!confirm(`確定刪除教材「${m.title}」?`)) return;
     const r = await teacherApi('deleteMaterial', {
-      teacherKey: window.BCC_API.getTeacherKey(), materialId: m.materialId,
+      ...window.BCC_API.teacherAuth(), materialId: m.materialId,
     });
     if (r.ok) { toast('已刪除', 'ok'); refresh(); }
     else toast('失敗:' + r.error, 'error');
@@ -440,7 +446,7 @@ function UploadMaterialDialog({ onClose, onDone, toast }) {
     setBusy(true);
     const base64 = await fileToBase64(file);
     const r = await teacherApi('createMaterial', {
-      teacherKey: window.BCC_API.getTeacherKey(),
+      ...window.BCC_API.teacherAuth(),
       week: +week, title, description: desc,
       fileName: file.name, mimeType: file.type || 'application/octet-stream',
       base64, published: true,
