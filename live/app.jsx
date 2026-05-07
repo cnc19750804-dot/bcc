@@ -32,12 +32,58 @@ function LiveApp() {
       const r = await api('me', { session: window.BCC_API.getSession() });
       if (r.ok) {
         setProfile(r.profile);
-        setView(r.profile.role === 'teacher' ? 'teacher' : 'student');
+        // 若還沒完成首次設定 → 強制導到 setup,無法繞過
+        if (r.profile.mustChangePassword) {
+          setView('setup');
+        } else {
+          setView(r.profile.role === 'teacher' ? 'teacher' : 'student');
+        }
       } else {
         window.BCC_API.setSession(null);
       }
     })();
   }, []);
+
+  // ── Idle 自動登出 ──
+  // 30 分鐘無操作自動登出,最後 1 分鐘彈警告
+  const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+  const WARN_BEFORE_MS = 60 * 1000;
+  const [idleWarn, setIdleWarn] = React.useState(false);
+  const idleTimerRef = React.useRef(null);
+  const warnTimerRef = React.useRef(null);
+
+  const resetIdleTimer = React.useCallback(() => {
+    setIdleWarn(false);
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    if (warnTimerRef.current) clearTimeout(warnTimerRef.current);
+    if (!window.BCC_API.getSession()) return;
+    warnTimerRef.current = setTimeout(() => setIdleWarn(true), IDLE_TIMEOUT_MS - WARN_BEFORE_MS);
+    idleTimerRef.current = setTimeout(() => {
+      window.BCC_API.setSession(null);
+      setProfile(null);
+      setIdleWarn(false);
+      setView('login');
+      setToast({ msg: '閒置過久,已自動登出', kind: 'warn' });
+      setTimeout(() => setToast(null), 4000);
+    }, IDLE_TIMEOUT_MS);
+  }, []);
+
+  React.useEffect(() => {
+    if (view === 'login' || view === 'forgot' || view === 'reset') {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      if (warnTimerRef.current) clearTimeout(warnTimerRef.current);
+      return;
+    }
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'];
+    const handler = () => resetIdleTimer();
+    events.forEach((e) => window.addEventListener(e, handler, { passive: true }));
+    resetIdleTimer();
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, handler));
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      if (warnTimerRef.current) clearTimeout(warnTimerRef.current);
+    };
+  }, [view, resetIdleTimer]);
 
   const showToast = (msg, kind = 'info') => {
     setToast({ msg, kind });
@@ -80,6 +126,26 @@ function LiveApp() {
       {view === 'setup'   && <LiveSetup    onDone={handleSetupDone} toast={showToast} />}
       {view === 'student' && <LiveStudent  profile={profile} onLogout={handleLogout} toast={showToast} />}
       {view === 'teacher' && <LiveTeacher  onLogout={handleLogout} toast={showToast} />}
+
+      {idleWarn && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 10000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div className="card" style={{ width: 360, padding: 24, textAlign: 'center' }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>⏰</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--ink-900)', marginBottom: 6 }}>
+              閒置即將自動登出
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--ink-600)', marginBottom: 18 }}>
+              您已超過 29 分鐘沒有操作,1 分鐘後將自動登出。
+            </div>
+            <button className="btn-primary" style={{ width: '100%' }} onClick={() => resetIdleTimer()}>
+              繼續使用
+            </button>
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div style={{
