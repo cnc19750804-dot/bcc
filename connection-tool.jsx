@@ -46,6 +46,19 @@ window.BCC_API = (() => {
   return { api, setApiUrl, getApiUrl, setTeacherKey, getTeacherKey, setSession, getSession };
 })();
 
+// ──────── 共用:base64 → 觸發瀏覽器下載 ────────
+window.saveBase64AsFile = function (base64, fileName, mimeType) {
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const blob = new Blob([bytes], { type: mimeType || 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fileName || 'download';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+};
+
 // ──────── 老師連線測試工具(浮動按鈕) ────────
 function ConnectionTool() {
   const [open, setOpen] = React.useState(false);

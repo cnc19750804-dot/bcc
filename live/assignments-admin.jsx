@@ -110,6 +110,9 @@ function AssignmentEditor({ assignment, onClose, onDone, toast }) {
   const [maxFiles, setMaxFiles] = React.useState(assignment?.maxFiles || 5);
   const [maxSizeMB, setMaxSizeMB] = React.useState(assignment?.maxSizeMB || 25);
   const [published, setPublished] = React.useState(assignment ? !!assignment.published : true);
+  const [lateAllowed, setLateAllowed] = React.useState(
+    assignment ? (assignment.lateAllowed !== false) : true
+  );
   const [busy, setBusy] = React.useState(false);
 
   async function submit() {
@@ -119,14 +122,14 @@ function AssignmentEditor({ assignment, onClose, onDone, toast }) {
       ...window.BCC_API.teacherAuth(),
       week: +week, title, description: desc,
       dueAt: new Date(dueAt).toISOString(),
-      maxFiles: +maxFiles, maxSizeMB: +maxSizeMB, published,
+      maxFiles: +maxFiles, maxSizeMB: +maxSizeMB, published, lateAllowed,
     };
     let r;
     if (assignment) {
       r = await window.BCC_API.api('updateAssignment', {
         ...window.BCC_API.teacherAuth(), assignmentId: assignment.assignmentId,
         patch: { week: +week, title, description: desc, dueAt: params.dueAt,
-          maxFiles: +maxFiles, maxSizeMB: +maxSizeMB, published },
+          maxFiles: +maxFiles, maxSizeMB: +maxSizeMB, published, lateAllowed },
       });
     } else {
       r = await window.BCC_API.api('createAssignment', params);
@@ -158,6 +161,15 @@ function AssignmentEditor({ assignment, onClose, onDone, toast }) {
           <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} />
             <span style={{ fontSize: 13 }}>{published ? '學生可以看到' : '草稿(學生看不到)'}</span>
+          </label>
+          <Lbl>逾期可繳</Lbl>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+            <input type="checkbox" checked={lateAllowed} onChange={(e) => setLateAllowed(e.target.checked)} style={{ marginTop: 4 }} />
+            <div style={{ fontSize: 13 }}>
+              {lateAllowed
+                ? <>允許逾期繳交 <span style={{ color: 'var(--ink-500)', fontSize: 11 }}>· 会被標記為「逾期」</span></>
+                : <>逾期鎖件 <span style={{ color: '#dc2626', fontSize: 11 }}>· 截止後學生無法繳交</span></>}
+            </div>
           </label>
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>

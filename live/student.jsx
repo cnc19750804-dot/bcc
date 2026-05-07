@@ -105,8 +105,11 @@ function AssignmentsTab({ data, onChanged, toast }) {
         {sorted.map((a) => {
           const sub = subsByAss[a.assignmentId];
           const isLate = !sub && new Date() > new Date(a.dueAt);
+          // 舊作業沒有 lateAllowed 欄位時以 true 處理
+          const lateAllowed = a.lateAllowed !== false;
+          const locked = isLate && !lateAllowed;
           return (
-            <div key={a.assignmentId} className="card" style={{ padding: 16 }}>
+            <div key={a.assignmentId} className="card" style={{ padding: 16, opacity: locked && !sub ? 0.7 : 1 }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                 <div className="mono" style={{
                   background: 'var(--brand-50)', color: 'var(--brand-700)',
@@ -116,16 +119,21 @@ function AssignmentsTab({ data, onChanged, toast }) {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink-900)' }}>{a.title}</div>
                   <div style={{ fontSize: 12, color: 'var(--ink-500)', marginTop: 4, lineHeight: 1.5 }}>{a.description}</div>
-                  <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 8, display: 'flex', gap: 12 }}>
+                  <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 8, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                     <span>📅 截止 {fmtDate(a.dueAt)}</span>
                     {sub && <SubBadge sub={sub} />}
-                    {!sub && isLate && <span style={{ color: '#dc2626' }}>⚠️ 已逾期</span>}
+                    {!sub && isLate && lateAllowed && <span style={{ color: '#d97706' }}>⚠️ 已逾期(仍可補交)</span>}
+                    {!sub && locked && <span style={{ color: '#dc2626' }}>🔒 已逾期且鎖件</span>}
                   </div>
                 </div>
-                <button onClick={() => setOpenUpload(a.assignmentId)} className="btn btn-primary btn-sm">
-                  {sub ? '重新上傳' : '上傳作業'}
+                <button onClick={() => setOpenUpload(a.assignmentId)}
+                  disabled={locked && !sub}
+                  className={`btn btn-sm ${(locked && !sub) ? 'btn-ghost' : 'btn-primary'}`}
+                  style={(locked && !sub) ? { opacity: 0.5, cursor: 'not-allowed' } : null}>
+                  {(locked && !sub) ? '已鎖件' : (sub ? '重新上傳' : '上傳作業')}
                 </button>
               </div>
+              {sub && <SubmittedFiles sub={sub} toast={toast} />}
             </div>
           );
         })}
@@ -150,6 +158,38 @@ function SubBadge({ sub }) {
   };
   const m = map[sub.state] || map.submitted;
   return <span style={{ color: m.color, fontWeight: 500 }}>● {m.label}</span>;
+}
+
+// 已繳交檔案列表 + 下載按鈕(從 Apps Script 抓 base64 觸發瀏覽器下載)
+function SubmittedFiles({ sub, toast }) {
+  const names = (() => { try { return JSON.parse(sub.fileNames || '[]'); } catch { return []; } })();
+  const ids = (() => { try { return JSON.parse(sub.fileIds || '[]'); } catch { return []; } })();
+  const [busyIdx, setBusyIdx] = React.useState(-1);
+  if (!names.length) return null;
+
+  async function dl(i) {
+    setBusyIdx(i);
+    const r = await window.BCC_API.api('downloadFile', {
+      session: window.BCC_API.getSession(), fileId: ids[i],
+    });
+    setBusyIdx(-1);
+    if (!r.ok) { toast('下載失敗:' + r.error, 'error'); return; }
+    window.saveBase64AsFile(r.base64, r.fileName, r.mimeType);
+  }
+
+  return (
+    <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed var(--ink-200)' }}>
+      <div style={{ fontSize: 11, color: 'var(--ink-500)', marginBottom: 6 }}>已繳交檔案</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {names.map((n, i) => (
+          <button key={i} onClick={() => dl(i)} disabled={busyIdx === i}
+            className="btn btn-ghost btn-sm" style={{ fontSize: 11, fontFamily: 'inherit' }}>
+            {busyIdx === i ? '⏳ 下載中…' : `⬇ ${n}`}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // ─── 上傳對話框 ───────────────────────────────────────────
@@ -192,7 +232,10 @@ function UploadDialog({ assignment, onClose, onDone, toast }) {
     if (r2.ok) {
       toast(r2.late ? '逾期繳交完成' : '繳交成功!', 'ok');
       onDone();
-    } else toast('繳交失敗:' + r2.error, 'error');
+    } else {
+      if (r2.error === 'past_due_locked') toast('作業已逾期且老師尚未開放補交', 'error');
+      else toast('繳交失敗:' + r2.error, 'error');
+    }
   }
 
   return (
@@ -255,11 +298,12 @@ function MaterialsTab({ materials, toast }) {
   const weeks = Object.keys(groups).sort((a, b) => +b - +a);
 
   async function download(m) {
-    const r = await studentApi('getMaterialUrl', {
+    toast('下載中…', 'info');
+    const r = await studentApi('downloadMaterial', {
       session: window.BCC_API.getSession(), materialId: m.materialId,
     });
-    if (r.ok) window.open(r.url, '_blank');
-    else toast('無法取得連結', 'error');
+    if (!r.ok) { toast('無法下載:' + r.error, 'error'); return; }
+    saveBase64AsFile(r.base64, r.fileName, r.mimeType);
   }
 
   return (

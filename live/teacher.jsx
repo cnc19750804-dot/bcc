@@ -131,7 +131,7 @@ function StatusBadge({ status }) {
 // ─── 新增學生對話框 ──────────────────────────────────────
 function AddStudentDialog({ onClose, onDone, toast }) {
   const [mode, setMode] = React.useState('single'); // single | bulk
-  const [sid, setSid] = React.useState(''); const [name, setName] = React.useState(''); const [bday, setBday] = React.useState('');
+  const [sid, setSid] = React.useState(''); const [name, setName] = React.useState('');
   const [bulk, setBulk] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const [results, setResults] = React.useState([]);
@@ -139,7 +139,7 @@ function AddStudentDialog({ onClose, onDone, toast }) {
   async function addOne() {
     if (!sid || !name) return toast('學號與姓名必填', 'error');
     setBusy(true);
-    const r = await teacherApi('createStudent', { ...window.BCC_API.teacherAuth(), studentId: sid, name, birthMMDD: bday || '0000' });
+    const r = await teacherApi('createStudent', { ...window.BCC_API.teacherAuth(), studentId: sid, name });
     setBusy(false);
     if (r.ok) { toast(`已建立 · 預設密碼:${r.defaultPassword}`, 'ok'); onDone(); }
     else toast('失敗:' + r.error, 'error');
@@ -151,9 +151,9 @@ function AddStudentDialog({ onClose, onDone, toast }) {
     setBusy(true);
     const out = [];
     for (const line of lines) {
-      const [bsid, bname, bbday] = line.split(/[,\t]/).map((s) => (s || '').trim());
+      const [bsid, bname] = line.split(/[,\t]/).map((s) => (s || '').trim());
       if (!bsid || !bname) { out.push({ line, ok: false, msg: '格式錯誤' }); continue; }
-      const r = await teacherApi('createStudent', { ...window.BCC_API.teacherAuth(), studentId: bsid, name: bname, birthMMDD: bbday || '0000' });
+      const r = await teacherApi('createStudent', { ...window.BCC_API.teacherAuth(), studentId: bsid, name: bname });
       out.push({ line, ...r });
       setResults([...out]);
     }
@@ -178,11 +178,9 @@ function AddStudentDialog({ onClose, onDone, toast }) {
         <div>
           <Field label="學號"><input className="input" value={sid} onChange={(e) => setSid(e.target.value)} placeholder="例如 11012001" /></Field>
           <Field label="姓名"><input className="input" value={name} onChange={(e) => setName(e.target.value)} /></Field>
-          <Field label="生日 MMDD(預設密碼用,可省略)">
-            <input className="input" value={bday} onChange={(e) => setBday(e.target.value)} placeholder="例如 0315" maxLength={4} />
-          </Field>
+
           <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: -6, marginBottom: 12 }}>
-            預設密碼:0000{bday || '0000'}
+            預設密碼:00000000(首次登入必須修改)
           </div>
           <button onClick={addOne} disabled={busy} className="btn btn-primary" style={{ width: '100%' }}>
             {busy ? '建立中…' : '建立'}
@@ -191,7 +189,7 @@ function AddStudentDialog({ onClose, onDone, toast }) {
       ) : (
         <div>
           <div style={{ fontSize: 12, color: 'var(--ink-500)', marginBottom: 6 }}>
-            每行一位學生,格式:<code>學號,姓名,生日MMDD</code>
+            每行一位學生,格式:<code>學號,姓名</code>(預設密碼一律 00000000)
           </div>
           <textarea value={bulk} onChange={(e) => setBulk(e.target.value)}
             placeholder="11012001,林思妤,0315&#10;11012002,王柏翰,0822"
@@ -303,6 +301,7 @@ function SubmissionsTab({ toast }) {
   const [loading, setLoading] = React.useState(true);
   const [view, setView] = React.useState('matrix'); // matrix | folders
   const [hover, setHover] = React.useState(null); // {sid, aid}
+  const [openCell, setOpenCell] = React.useState(null); // 點擊開啟下載面板
 
   React.useEffect(() => {
     (async () => {
@@ -409,10 +408,11 @@ function SubmissionsTab({ toast }) {
                         const r = subMap[s.studentId + '|' + a.assignmentId];
                         const cellKey = s.studentId + '|' + a.assignmentId;
                         return (
-                          <td key={a.assignmentId} title={r ? `${r.state === 'late' ? '逾期' : '準時'}\n${fmtDate(r.submittedAt)}\n${parseFiles(r).length} 個檔案` : '未繳'}
+                          <td key={a.assignmentId} title={r ? `${r.state === 'late' ? '逾期' : '準時'}\n${fmtDate(r.submittedAt)}\n${parseFiles(r).length} 個檔案 — 點擊下載` : '未繳'}
                             onMouseEnter={() => setHover(cellKey)}
                             onMouseLeave={() => setHover(null)}
-                            style={{ borderLeft: 'var(--border-soft)', textAlign: 'center', padding: '6px 4px', background: hover === cellKey ? 'var(--bg-soft)' : rowBg }}>
+                            onClick={() => r && setOpenCell({ sub: r, student: s, assignment: a })}
+                            style={{ borderLeft: 'var(--border-soft)', textAlign: 'center', padding: '6px 4px', cursor: r ? 'pointer' : 'default', background: hover === cellKey ? 'var(--bg-soft)' : rowBg }}>
                             <SubmissionDot sub={r} />
                           </td>
                         );
@@ -438,6 +438,8 @@ function SubmissionsTab({ toast }) {
           </div>
         )
       )}
+
+      {openCell && <TeacherDownloadDialog {...openCell} onClose={() => setOpenCell(null)} toast={toast} />}
 
       {view === 'folders' && (
         <div>
@@ -469,6 +471,50 @@ function SubmissionsTab({ toast }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// 老師端:下載某筆繳交的檔案彈窗
+function TeacherDownloadDialog({ sub, student, assignment, onClose, toast }) {
+  const names = (() => { try { return JSON.parse(sub.fileNames || '[]'); } catch { return []; } })();
+  const ids = (() => { try { return JSON.parse(sub.fileIds || '[]'); } catch { return []; } })();
+  const [busyIdx, setBusyIdx] = React.useState(-1);
+
+  async function dl(i) {
+    setBusyIdx(i);
+    const r = await window.BCC_API.api('teacherDownload', { ...window.BCC_API.teacherAuth(), fileId: ids[i] });
+    setBusyIdx(-1);
+    if (!r.ok) { toast('下載失敗:' + r.error, 'error'); return; }
+    window.saveBase64AsFile(r.base64, r.fileName, r.mimeType);
+  }
+
+  async function dlAll() {
+    for (let i = 0; i < ids.length; i++) await dl(i);
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99 }}>
+      <div onClick={(e) => e.stopPropagation()} className="card" style={{ padding: 20, width: 480, maxWidth: '90vw' }}>
+        <div style={{ fontSize: 11, color: 'var(--ink-500)' }}>W{String(assignment.week).padStart(2, '0')} · {assignment.title}</div>
+        <h3 style={{ fontSize: 16, fontWeight: 600, margin: '4px 0 4px' }}>{student.studentId} {student.name}</h3>
+        <div style={{ fontSize: 12, color: 'var(--ink-500)', marginBottom: 12 }}>
+          {sub.state === 'late' ? '逾期' : '準時'} · 繳交於 {fmtDate(sub.submittedAt)} · {names.length} 個檔案
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+          {names.map((n, i) => (
+            <button key={i} onClick={() => dl(i)} disabled={busyIdx === i}
+              className="btn btn-ghost btn-sm" style={{ justifyContent: 'flex-start', fontSize: 12 }}>
+              {busyIdx === i ? '⏳ 下載中…' : `⬇ ${n}`}
+            </button>
+          ))}
+        </div>
+        {sub.note && <div style={{ fontSize: 12, color: 'var(--ink-700)', background: 'var(--bg-soft)', padding: 10, borderRadius: 6, marginBottom: 12 }}>📝 {sub.note}</div>}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          {names.length > 1 && <button onClick={dlAll} className="btn btn-sm">全部下載</button>}
+          <button onClick={onClose} className="btn btn-primary btn-sm">關閉</button>
+        </div>
+      </div>
     </div>
   );
 }
