@@ -133,7 +133,7 @@ function AssignmentsTab({ data, onChanged, toast }) {
                   {(locked && !sub) ? '已鎖件' : (sub ? '重新上傳' : '上傳作業')}
                 </button>
               </div>
-              {sub && <SubmittedFiles sub={sub} toast={toast} />}
+              {sub && <SubmittedFiles sub={sub} toast={toast} onChanged={onChanged} />}
             </div>
           );
         })}
@@ -160,11 +160,12 @@ function SubBadge({ sub }) {
   return <span style={{ color: m.color, fontWeight: 500 }}>● {m.label}</span>;
 }
 
-// 已繳交檔案列表 + 下載按鈕(從 Apps Script 抓 base64 觸發瀏覽器下載)
-function SubmittedFiles({ sub, toast }) {
+// 已繳交檔案列表 + 下載/刪除按鈕(從 Apps Script 抓 base64 觸發瀏覽器下載)
+function SubmittedFiles({ sub, toast, onChanged }) {
   const names = (() => { try { return JSON.parse(sub.fileNames || '[]'); } catch { return []; } })();
   const ids = (() => { try { return JSON.parse(sub.fileIds || '[]'); } catch { return []; } })();
   const [busyIdx, setBusyIdx] = React.useState(-1);
+  const [delIdx, setDelIdx] = React.useState(-1);
   if (!names.length) return null;
 
   async function dl(i) {
@@ -177,17 +178,67 @@ function SubmittedFiles({ sub, toast }) {
     window.saveBase64AsFile(r.base64, r.fileName, r.mimeType);
   }
 
+  async function del(i) {
+    if (!confirm(`確定刪除檔案「${names[i]}」?\n(此操作無法復原,如有需要請重新上傳)`)) return;
+    setDelIdx(i);
+    const r = await window.BCC_API.api('deleteSubmissionFile', {
+      session: window.BCC_API.getSession(),
+      submissionId: sub.submissionId, fileId: ids[i],
+    });
+    setDelIdx(-1);
+    if (!r.ok) { toast('刪除失敗:' + r.error, 'error'); return; }
+    toast('已刪除', 'ok');
+    if (onChanged) onChanged();
+  }
+
+  const isGraded = sub.state === 'graded';
+
   return (
     <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed var(--ink-200)' }}>
-      <div style={{ fontSize: 11, color: 'var(--ink-500)', marginBottom: 6 }}>已繳交檔案</div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <div style={{ fontSize: 11, color: 'var(--ink-500)' }}>
+          ✅ 已繳交檔案 · 共 {names.length} 個
+        </div>
+        {sub.submittedAt && (
+          <div style={{ fontSize: 11, color: 'var(--ink-500)' }}>
+            🕒 {fmtDate(sub.submittedAt)}
+          </div>
+        )}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         {names.map((n, i) => (
-          <button key={i} onClick={() => dl(i)} disabled={busyIdx === i}
-            className="btn btn-ghost btn-sm" style={{ fontSize: 11, fontFamily: 'inherit' }}>
-            {busyIdx === i ? '⏳ 下載中…' : `⬇ ${n}`}
-          </button>
+          <div key={i} style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '6px 10px', background: 'var(--bg-soft, #f7f5f0)', borderRadius: 6, fontSize: 12,
+          }}>
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              📄 {n}
+            </span>
+            <button onClick={() => dl(i)} disabled={busyIdx === i}
+              title="下載"
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 6px', fontSize: 12, color: 'var(--brand-700)' }}>
+              {busyIdx === i ? '⏳' : '⬇ 下載'}
+            </button>
+            {!isGraded && (
+              <button onClick={() => del(i)} disabled={delIdx === i}
+                title="刪除這個檔案"
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px 6px', fontSize: 12, color: '#dc2626' }}>
+                {delIdx === i ? '⏳' : '🗑 刪除'}
+              </button>
+            )}
+          </div>
         ))}
       </div>
+      {isGraded && (
+        <div style={{ fontSize: 11, color: 'var(--ink-500)', marginTop: 6 }}>
+          ℹ️ 此作業已評分,無法刪除檔案
+        </div>
+      )}
+      {sub.note && (
+        <div style={{ marginTop: 8, padding: 8, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, fontSize: 12, color: '#92400e' }}>
+          📝 您的備註:{sub.note}
+        </div>
+      )}
     </div>
   );
 }
@@ -230,7 +281,14 @@ function UploadDialog({ assignment, onClose, onDone, toast }) {
     });
     setBusy(false);
     if (r2.ok) {
-      toast(r2.late ? '逾期繳交完成' : '繳交成功!', 'ok');
+      // 改成顯示成功對話框,讓學生明確看到繳交狀態
+      const submittedTime = new Date().toLocaleString('zh-TW');
+      toast(
+        r2.late
+          ? `✅ 逾期繳交完成!共 ${names.length} 個檔案 · ${submittedTime}`
+          : `✅ 繳交成功!共 ${names.length} 個檔案 · ${submittedTime}`,
+        'ok'
+      );
       onDone();
     } else {
       if (r2.error === 'past_due_locked') toast('作業已逾期且老師尚未開放補交', 'error');
