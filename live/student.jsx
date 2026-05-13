@@ -87,7 +87,9 @@ function AssignmentsTab({ data, onChanged, toast }) {
 
   const subsByAss = {};
   data.submissions.forEach((s) => {
-    if (!subsByAss[s.assignmentId] || s.version > subsByAss[s.assignmentId].version) {
+    const prev = subsByAss[s.assignmentId];
+    // 以繳交時間最新的為準(舊資料 version 都是 1,無法靠 version 判斷)
+    if (!prev || new Date(s.submittedAt) >= new Date(prev.submittedAt)) {
       subsByAss[s.assignmentId] = s;
     }
   });
