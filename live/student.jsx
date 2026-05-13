@@ -132,7 +132,7 @@ function AssignmentsTab({ data, onChanged, toast }) {
                   disabled={locked && !sub}
                   className={`btn btn-sm ${(locked && !sub) ? 'btn-ghost' : 'btn-primary'}`}
                   style={(locked && !sub) ? { opacity: 0.5, cursor: 'not-allowed' } : null}>
-                  {(locked && !sub) ? '已鎖件' : (sub ? '重新上傳' : '上傳作業')}
+                  {(locked && !sub) ? '已鎖件' : (sub ? '追加上傳' : '上傳作業')}
                 </button>
               </div>
               {sub && <SubmittedFiles sub={sub} toast={toast} onChanged={onChanged} />}
