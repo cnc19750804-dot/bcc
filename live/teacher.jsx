@@ -563,6 +563,7 @@ function TeacherMaterialsTab({ toast }) {
   const [list, setList] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [openUpload, setOpenUpload] = React.useState(false);
+  const [editing, setEditing] = React.useState(null);
 
   async function refresh() {
     setLoading(true);
@@ -634,6 +635,7 @@ function TeacherMaterialsTab({ toast }) {
                     </button>
                   </Td>
                   <Td>
+                    <button onClick={() => setEditing(m)} className="btn btn-ghost btn-sm" style={{ fontSize: 11 }}>修改</button>
                     <button onClick={() => del(m)} className="btn btn-ghost btn-sm" style={{ color: '#dc2626', fontSize: 11 }}>刪除</button>
                   </Td>
                 </tr>
@@ -644,6 +646,46 @@ function TeacherMaterialsTab({ toast }) {
       )}
 
       {openUpload && <UploadMaterialDialog onClose={() => setOpenUpload(false)} onDone={() => { setOpenUpload(false); refresh(); }} toast={toast} />}
+      {editing && <EditMaterialDialog material={editing} onClose={() => setEditing(null)} onDone={() => { setEditing(null); refresh(); }} toast={toast} />}
+    </div>
+  );
+}
+
+function EditMaterialDialog({ material, onClose, onDone, toast }) {
+  const [week, setWeek] = React.useState(material.week || 1);
+  const [title, setTitle] = React.useState(material.title || '');
+  const [desc, setDesc] = React.useState(material.description || '');
+  const [busy, setBusy] = React.useState(false);
+
+  async function save() {
+    if (!title || !week) return toast('週次與標題必填', 'error');
+    setBusy(true);
+    const r = await teacherApi('updateMaterialMeta', {
+      ...window.BCC_API.teacherAuth(), materialId: material.materialId,
+      week: +week, title, description: desc,
+    });
+    setBusy(false);
+    if (r.ok) { toast('已更新', 'ok'); onDone(); } else toast('失敗:' + r.error, 'error');
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99 }}>
+      <div onClick={(e) => e.stopPropagation()} className="card" style={{ width: '92%', maxWidth: 460, padding: 24, background: 'white' }}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 600 }}>修改教材</h3>
+        <div style={{ fontSize: 12, color: 'var(--ink-500)', marginBottom: 16 }}>檔案不變,只修改週次與文字。</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '70px 1fr', gap: 12, alignItems: 'center' }}>
+          <label style={{ fontSize: 13, color: 'var(--ink-700)' }}>週次</label>
+          <input type="number" min={1} max={30} className="input" value={week} onChange={(e) => setWeek(e.target.value)} />
+          <label style={{ fontSize: 13, color: 'var(--ink-700)' }}>標題</label>
+          <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <label style={{ fontSize: 13, color: 'var(--ink-700)', alignSelf: 'start', paddingTop: 8 }}>說明</label>
+          <textarea className="input" rows={3} value={desc} onChange={(e) => setDesc(e.target.value)} style={{ resize: 'vertical' }} />
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 20, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} disabled={busy} className="btn btn-ghost">取消</button>
+          <button onClick={save} disabled={busy} className="btn btn-primary">{busy ? '儲存中…' : '儲存'}</button>
+        </div>
+      </div>
     </div>
   );
 }
