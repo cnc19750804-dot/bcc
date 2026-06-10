@@ -60,6 +60,13 @@ function MoveSection({ toast }) {
   const [fromId, setFromId] = React.useState('');
   const [expand, setExpand] = React.useState({}); // submissionId -> bool
   const [busy, setBusy] = React.useState(false);
+  const [preview, setPreview] = React.useState(null); // { url, name }
+
+  async function prevFile(fileId, fileName) {
+    const r = await window.BCC_API.api('previewUrl', { ...window.BCC_API.teacherAuth(), fileId });
+    if (!r.ok) { toast('無法預覽:' + r.error, 'error'); return; }
+    setPreview({ url: r.url, name: r.name || fileName });
+  }
 
   React.useEffect(() => {
     if (!fromId && assignments.length) setFromId(assignments[0].assignmentId);
@@ -133,6 +140,7 @@ function MoveSection({ toast }) {
                   {names.map((n, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', fontSize: 12 }}>
                       <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📄 {n}</span>
+                      <button className="btn btn-ghost btn-sm" title="預覽" onClick={() => prevFile(ids[i], n)}>👁</button>
                       <select id={`fstu-${sub.submissionId}-${i}`} defaultValue={sub.studentId} style={mvSel} title="目標學號">
                         {students.map((st) => <option key={st.studentId} value={st.studentId}>{st.studentId} {st.name}</option>)}
                       </select>
@@ -152,11 +160,20 @@ function MoveSection({ toast }) {
           );
         })}
       </div>
+      {preview && (
+        <div onClick={() => setPreview(null)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, color: 'white', maxWidth: '90vw' }}>
+            <span style={{ fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{preview.name}</span>
+            <button onClick={(e) => { e.stopPropagation(); setPreview(null); }} className="btn btn-sm" style={{ background: 'rgba(255,255,255,.2)', color: 'white' }}>關閉 ✕</button>
+          </div>
+          <iframe src={preview.url} onClick={(e) => e.stopPropagation()}
+            style={{ width: '90vw', height: '80vh', border: 'none', borderRadius: 8, background: 'white' }} title="預覽" />
+        </div>
+      )}
     </div>
   );
 }
-
-// ════ 模式 2:從雲端資料夾匯入 ════
 function ImportSection({ toast }) {
   const { assignments, students, loading } = useTeacherData();
   const [folderInput, setFolderInput] = React.useState('');
