@@ -31,6 +31,7 @@ function LiveTeacher({ onLogout, toast }) {
           { id: 'students', label: '學生管理' },
           { id: 'assignments', label: '作業管理' },
           { id: 'submissions', label: '繳交狀況' },
+          { id: 'move', label: '搬移工具' },
           { id: 'materials', label: '教材管理' },
         ].map((t) => {
           const on = tab === t.id;
@@ -50,6 +51,7 @@ function LiveTeacher({ onLogout, toast }) {
         {tab === 'students' && <StudentsTab toast={toast} />}
         {tab === 'assignments' && <window.AssignmentsAdminTab toast={toast} />}
         {tab === 'submissions' && <SubmissionsTab toast={toast} />}
+        {tab === 'move' && <window.MoveTab toast={toast} />}
         {tab === 'materials' && <TeacherMaterialsTab toast={toast} />}
       </div>
     </div>
