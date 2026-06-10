@@ -482,6 +482,7 @@ function TeacherDownloadDialog({ sub, student, assignment, onClose, toast }) {
   const names = (() => { try { return JSON.parse(sub.fileNames || '[]'); } catch { return []; } })();
   const ids = (() => { try { return JSON.parse(sub.fileIds || '[]'); } catch { return []; } })();
   const [busyIdx, setBusyIdx] = React.useState(-1);
+  const [preview, setPreview] = React.useState(null); // { url, name }
 
   async function dl(i) {
     setBusyIdx(i);
@@ -489,6 +490,12 @@ function TeacherDownloadDialog({ sub, student, assignment, onClose, toast }) {
     setBusyIdx(-1);
     if (!r.ok) { toast('下載失敗:' + r.error, 'error'); return; }
     window.saveBase64AsFile(r.base64, r.fileName, r.mimeType);
+  }
+
+  async function prev(i) {
+    const r = await window.BCC_API.api('previewUrl', { ...window.BCC_API.teacherAuth(), fileId: ids[i] });
+    if (!r.ok) { toast('無法預覽:' + r.error, 'error'); return; }
+    setPreview({ url: r.url, name: r.name || names[i] });
   }
 
   async function dlAll() {
@@ -505,10 +512,13 @@ function TeacherDownloadDialog({ sub, student, assignment, onClose, toast }) {
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
           {names.map((n, i) => (
-            <button key={i} onClick={() => dl(i)} disabled={busyIdx === i}
-              className="btn btn-ghost btn-sm" style={{ justifyContent: 'flex-start', fontSize: 12 }}>
-              {busyIdx === i ? '⏳ 下載中…' : `⬇ ${n}`}
-            </button>
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button onClick={() => prev(i)} className="btn btn-ghost btn-sm" style={{ fontSize: 12, padding: '4px 8px' }} title="預覽">👁</button>
+              <button onClick={() => dl(i)} disabled={busyIdx === i}
+                className="btn btn-ghost btn-sm" style={{ justifyContent: 'flex-start', fontSize: 12, flex: 1, minWidth: 0 }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{busyIdx === i ? '⏳ 下載中…' : `⬇ ${n}`}</span>
+              </button>
+            </div>
           ))}
         </div>
         {sub.note && <div style={{ fontSize: 12, color: 'var(--ink-700)', background: 'var(--bg-soft)', padding: 10, borderRadius: 6, marginBottom: 12 }}>📝 {sub.note}</div>}
@@ -517,6 +527,17 @@ function TeacherDownloadDialog({ sub, student, assignment, onClose, toast }) {
           <button onClick={onClose} className="btn btn-primary btn-sm">關閉</button>
         </div>
       </div>
+      {preview && (
+        <div onClick={(e) => { e.stopPropagation(); setPreview(null); }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10, color: 'white', maxWidth: '90vw' }}>
+            <span style={{ fontSize: 14, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{preview.name}</span>
+            <button onClick={(e) => { e.stopPropagation(); setPreview(null); }} className="btn btn-sm" style={{ background: 'rgba(255,255,255,.2)', color: 'white' }}>關閉 ✕</button>
+          </div>
+          <iframe src={preview.url} onClick={(e) => e.stopPropagation()}
+            style={{ width: '90vw', height: '80vh', border: 'none', borderRadius: 8, background: 'white' }} title="預覽" />
+        </div>
+      )}
     </div>
   );
 }
